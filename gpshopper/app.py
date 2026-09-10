@@ -2,6 +2,7 @@
 
 import queue
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog
 
@@ -67,6 +68,7 @@ class App(tk.Tk):
         self.wander_busy = False
         # Every Chrome call runs on the single worker thread, so this needs no lock.
         self.chrome = targets.ChromeSession()
+        self.push_var = tk.StringVar(value="nothing pushed yet")
 
         self._build()
         self._set_coords(self.lat, self.lon, fly=False)
@@ -171,9 +173,12 @@ class App(tk.Tk):
         NeonButton(send, "🤖  send to Android emulator", self._hop_android, small=True).pack(fill="x", pady=2)
         NeonButton(send, "⧉  copy coordinates", self._copy, small=True).pack(fill="x", pady=2)
 
+        tk.Label(send, textvariable=self.push_var, bg=PANEL, fg=MUTED,
+                 font=MONO_SM, anchor="w", justify="left").pack(fill="x", pady=(8, 0))
+
         wander = tk.Frame(send, bg=PANEL)
-        wander.pack(fill="x", pady=(8, 0))
-        tk.Checkbutton(wander, text="wander (live jitter in Chrome)",
+        wander.pack(fill="x", pady=(6, 0))
+        tk.Checkbutton(wander, text="wander (\u00b18 m jitter, too small to see on a map)",
                        variable=self.wander_on, command=self._toggle_wander,
                        bg=PANEL, fg=TEXT, selectcolor=PANEL, activebackground=PANEL,
                        activeforeground=CYAN, font=MONO_SM, highlightthickness=0,
@@ -237,6 +242,7 @@ class App(tk.Tk):
 
         def task():
             count = self.chrome.set_location(lat, lon, acc)
+            self._pushed(lat, lon, count)
             return ("Chrome hopped to %.4f, %.4f (%d tab%s) — keep this app open"
                     % (lat, lon, count, "" if count == 1 else "s"))
 
@@ -285,7 +291,8 @@ class App(tk.Tk):
 
     def _toggle_wander(self):
         if self.wander_on.get():
-            self._log("wander on — nudging Chrome every 3s", "dim")
+            self._log("wander on — \u00b18 m every 3s; the readout above will tick",
+                      "dim")
             self._wander_tick()
         else:
             self._log("wander off", "dim")
@@ -299,11 +306,23 @@ class App(tk.Tk):
             acc = self._accuracy()
 
             def task():
-                self.chrome.set_location(lat, lon, acc)
+                count = self.chrome.set_location(lat, lon, acc)
+                self._pushed(lat, lon, count)
                 return None                     # quiet: this runs every few seconds
 
             self._run(task, None, done=self._wander_done)
         self.after(3000, self._wander_tick)
+
+    def _pushed(self, lat, lon, count):
+        """Show what Chrome was last told. Called from the worker thread.
+
+        Without this, wander looks identical to a broken app: the position is
+        updating every three seconds and absolutely nothing on screen says so.
+        """
+        stamp = time.strftime("%H:%M:%S")
+        text = "Chrome has %.5f, %.5f  ·  %d tab%s  ·  %s" % (
+            lat, lon, count, "" if count == 1 else "s", stamp)
+        self.log_queue.put((lambda: self.push_var.set(text), "callback"))
 
     def _wander_done(self):
         self.wander_busy = False

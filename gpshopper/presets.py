@@ -18,4 +18,5 @@ PRESETS = [
     ("Chernobyl",             51.3890,   30.0990),
     ("Svalbard",              78.2232,   15.6469),
     ("Ann Arbor, MI",         42.2808,  -83.7430),
+    ("Leinweber Bldg (UM)",   42.29295, -83.71723),
 ]
